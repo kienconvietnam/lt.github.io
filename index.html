@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lưu Truyện & Video</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #121212;
+      color: #ffffff;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background: #1f1f1f;
+      color: #00e676;
+      padding: 1em;
+      text-align: center;
+      font-size: 1.8em;
+      font-weight: bold;
+      box-shadow: 0 2px 5px #000;
+    }
+    .container {
+      padding: 1em;
+      max-width: 600px;
+      margin: auto;
+    }
+    input[type="text"], input[type="file"] {
+      width: 100%;
+      padding: 0.5em;
+      border: none;
+      border-radius: 5px;
+      margin-bottom: 0.5em;
+      background: #2c2c2c;
+      color: #fff;
+    }
+    button {
+      padding: 0.5em 1em;
+      background: #00e676;
+      color: #000;
+      border: none;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+    button:hover {
+      background: #00c853;
+    }
+    h2 {
+      margin-top: 1.5em;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .swipe {
+      background: #1e1e1e;
+      padding: 0.7em;
+      margin: 0.5em 0;
+      display: flex;
+      align-items: center;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+      transition: transform 0.3s ease;
+    }
+    .swipe.removed {
+      transform: translateX(-100%);
+      opacity: 0;
+    }
+    .thumbnail {
+      width: 80px;
+      height: 60px;
+      object-fit: cover;
+      border-radius: 5px;
+      margin-right: 1em;
+    }
+    .info {
+      flex: 1;
+    }
+    .info strong {
+      display: block;
+      margin-bottom: 0.3em;
+    }
+    .view-button {
+      text-decoration: none;
+      color: #40c4ff;
+    }
+    .collapsed {
+      display: none;
+    }
+    #modal {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0,0,0,0.8);
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-content {
+      background: #1e1e1e;
+      padding: 1em 2em;
+      border-radius: 10px;
+      text-align: center;
+    }
+    .modal-buttons button {
+      margin: 0 1em;
+      background: #333;
+      color: #00e676;
+      border: 1px solid #00e676;
+    }
+    .modal-buttons button:hover {
+      background: #00e676;
+      color: black;
+    }
+    .page-container {
+      overflow: hidden;
+      position: relative;
+      min-height: 300px;
+    }
+    .page {
+      display: none;
+      animation: fadeIn 0.4s ease;
+    }
+    .page.active {
+      display: block;
+    }
+    .pagination-buttons {
+      text-align: center;
+      margin-top: 1em;
+    }
+    .pagination-buttons button {
+      margin: 0 0.5em;
+      background: #00e676;
+      color: #000;
+      border: none;
+      border-radius: 5px;
+      padding: 0.4em 0.8em;
+      cursor: pointer;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateX(30px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+  </style>
+</head>
+<body>
+  <header>Lưu Truyện & Video</header>
+  <div class="container">
+    <input id="urlInput" type="text" placeholder="Dán link truyện hoặc video..." />
+    <input id="fileInput" type="file" accept="image/*" />
+    <button onclick="showModal()">Lưu</button>
+
+    <h2>📖 Truyện <span id="storiesToggle" onclick="toggleSection('storiesContainer')">➖</span></h2>
+    <div id="storiesContainer" class="page-container"></div>
+    <div class="pagination-buttons" id="storiesPagination"></div>
+
+    <h2>📺 Video <span id="videosToggle" onclick="toggleSection('videosContainer')">➖</span></h2>
+    <div id="videosContainer" class="page-container"></div>
+    <div class="pagination-buttons" id="videosPagination"></div>
+  </div>
+
+  <div id="modal">
+    <div class="modal-content">
+      <h3>Chọn loại nội dung</h3>
+      <div class="modal-buttons">
+        <button onclick="classifyAndSave('truyện')">📖 Truyện</button>
+        <button onclick="classifyAndSave('video')">📺 Video</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const storiesPerPage = 15;
+    const videosPerPage = 15;
+    let stories = [], videos = [];
+    let currentStoryPage = 0, currentVideoPage = 0;
+
+    function toggleSection(id) {
+      const content = document.getElementById(id);
+      const toggle = document.getElementById(id === 'storiesContainer' ? 'storiesToggle' : 'videosToggle');
+      content.classList.toggle('collapsed');
+      toggle.textContent = content.classList.contains('collapsed') ? '➕' : '➖';
+    }
+
+    async function fetchPageTitle(url) {
+      try {
+        const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(url)}`);
+        const html = await res.text();
+        const doc = new DOMParser().parseFromString(html, "text/html");
+        return doc.querySelector('title')?.innerText || url;
+      } catch {
+        return url;
+      }
+    }
+
+    function showModal() {
+      if (document.getElementById('urlInput').value.trim()) {
+        document.getElementById('modal').style.display = 'flex';
+      } else {
+        alert("Vui lòng dán URL trước.");
+      }
+    }
+
+    function createContentElement(title, url, img, isVideo) {
+      const div = document.createElement('div');
+      div.className = 'swipe';
+      div.innerHTML = `
+        <img src="${img || ''}" class="thumbnail" onerror="this.src=''" />
+        <div class="info">
+          <strong>${title}</strong>
+          <a href="${url}" target="_blank" class="view-button">Xem</a>
+        </div>
+        <button onclick="removeContent(this, '${url}')" title="Xóa">❌</button>
+      `;
+      return div;
+    }
+
+    function removeContent(btn, url) {
+      const el = btn.closest('.swipe');
+      el.classList.add('removed');
+      setTimeout(() => el.remove(), 300);
+      let saved = JSON.parse(localStorage.getItem('savedContent') || '[]');
+      saved = saved.filter(item => item.url !== url);
+      localStorage.setItem('savedContent', JSON.stringify(saved));
+      stories = saved.filter(x => !x.isVideo);
+      videos = saved.filter(x => x.isVideo);
+      paginate(stories, 'storiesContainer', 'storiesPagination', false);
+      paginate(videos, 'videosContainer', 'videosPagination', true);
+    }
+
+    async function classifyAndSave(type) {
+      const urlInput = document.getElementById('urlInput');
+      const fileInput = document.getElementById('fileInput');
+      let url = urlInput.value.trim();
+      if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+      const isVideo = type === 'video';
+      const title = await fetchPageTitle(url);
+      const file = fileInput.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          saveAndRender(title, url, reader.result, isVideo);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        const img = ''; // Không lấy thumbnail YouTube nữa
+        saveAndRender(title, url, img, isVideo);
+      }
+      urlInput.value = '';
+      fileInput.value = '';
+      document.getElementById('modal').style.display = 'none';
+    }
+
+    function saveAndRender(title, url, img, isVideo) {
+      const item = { title, url, img, isVideo };
+      const saved = JSON.parse(localStorage.getItem('savedContent') || '[]');
+      saved.push(item);
+      localStorage.setItem('savedContent', JSON.stringify(saved));
+      if (isVideo) {
+        videos.push(item);
+        paginate(videos, 'videosContainer', 'videosPagination', true);
+      } else {
+        stories.push(item);
+        paginate(stories, 'storiesContainer', 'storiesPagination', false);
+      }
+    }
+
+    function paginate(items, containerId, paginationId, isVideo) {
+      const container = document.getElementById(containerId);
+      const pagination = document.getElementById(paginationId);
+      container.innerHTML = '';
+      pagination.innerHTML = '';
+      const perPage = isVideo ? videosPerPage : storiesPerPage;
+      const totalPages = Math.ceil(items.length / perPage);
+      for (let i = 0; i < totalPages; i++) {
+        const page = document.createElement('div');
+        page.className = 'page' + (i === 0 ? ' active' : '');
+        const slice = items.slice(i * perPage, (i + 1) * perPage);
+        slice.forEach(item => page.appendChild(createContentElement(item.title, item.url, item.img, item.isVideo)));
+        container.appendChild(page);
+      }
+      if (totalPages > 1) {
+        const prev = document.createElement('button');
+        const next = document.createElement('button');
+        prev.textContent = '⬅ Trang trước';
+        next.textContent = 'Trang sau ➡';
+        let currentPage = 0;
+        prev.onclick = () => {
+          if (currentPage > 0) {
+            container.children[currentPage].classList.remove('active');
+            currentPage--;
+            container.children[currentPage].classList.add('active');
+            if (isVideo) currentVideoPage = currentPage; else currentStoryPage = currentPage;
+          }
+        };
+        next.onclick = () => {
+          if (currentPage < totalPages - 1) {
+            container.children[currentPage].classList.remove('active');
+            currentPage++;
+            container.children[currentPage].classList.add('active');
+            if (isVideo) currentVideoPage = currentPage; else currentStoryPage = currentPage;
+          }
+        };
+        pagination.appendChild(prev);
+        pagination.appendChild(next);
+      }
+    }
+
+    window.onload = () => {
+      const saved = JSON.parse(localStorage.getItem('savedContent') || '[]');
+      stories = saved.filter(x => !x.isVideo);
+      videos = saved.filter(x => x.isVideo);
+      paginate(stories, 'storiesContainer', 'storiesPagination', false);
+      paginate(videos, 'videosContainer', 'videosPagination', true);
+    };
+  </script>
+</body>
+</html>
